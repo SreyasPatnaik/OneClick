@@ -26,11 +26,14 @@ export interface ExtractedMedia {
  */
 export function getYtDlpPath(): string | null {
   const candidatePaths = [
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp',
     path.resolve(__dirname, '../bin/yt-dlp.exe'),
     path.resolve(__dirname, '../../desktop/bin/yt-dlp.exe'),
     path.resolve(process.cwd(), 'apps/api/bin/yt-dlp.exe'),
     path.resolve(process.cwd(), 'apps/desktop/bin/yt-dlp.exe'),
     path.resolve(__dirname, '../bin/yt-dlp'),
+    path.resolve(process.cwd(), 'apps/api/bin/yt-dlp'),
   ];
 
   for (const p of candidatePaths) {
@@ -39,7 +42,7 @@ export function getYtDlpPath(): string | null {
     }
   }
 
-  return null;
+  return 'yt-dlp';
 }
 
 /**
@@ -47,6 +50,8 @@ export function getYtDlpPath(): string | null {
  */
 export function getFfmpegDir(): string | null {
   const candidateDirs = [
+    '/usr/bin',
+    '/usr/local/bin',
     path.resolve(__dirname, '../bin'),
     path.resolve(__dirname, '../../desktop/bin'),
     path.resolve(process.cwd(), 'apps/api/bin'),

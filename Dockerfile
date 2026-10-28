@@ -12,24 +12,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy package manifests
-COPY package*.json ./
-COPY packages/shared/package.json ./packages/shared/
-COPY apps/api/package.json ./apps/api/
+# Copy entire repository (all workspaces)
+COPY . .
 
-# Install dependencies
-RUN npm install --omit=dev
+# Install dependencies across all workspaces
+RUN npm install
 
-# Copy source code
-COPY tsconfig.base.json ./
-COPY packages/shared ./packages/shared
-COPY apps/api ./apps/api
-
-# Compile TypeScript
+# Build shared library and backend API
 RUN npm run build --workspace=@clipnest/shared
 RUN npm run build --workspace=@clipnest/api
 
-# Express API Port
+# Environment variables
 ENV PORT=4000
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
