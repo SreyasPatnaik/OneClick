@@ -1,0 +1,28 @@
+{
+  "name": "@clipnest/desktop",
+  "version": "1.0.0",
+  "description": "ClipNest Desktop and Web Application",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:desktop": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clipnest/shared": "file:../../packages/shared",
+    "lucide-react": "^1.61.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.2.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.1"
+  }
+}

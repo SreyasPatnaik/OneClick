@@ -1,0 +1,28 @@
+# Node modules and build output
+node_modules/
+dist/
+build/
+out/
+.vite/
+
+# Environment variables (NEVER COMMIT REAL KEYS/SECRETS)
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj

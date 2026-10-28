@@ -1,0 +1,740 @@
+/* ClipNest Design System & Global Styles */
+/* Palette: #5B4632 (Espresso Earth), #F4D9A0 (Champagne Sand), #C8792C (Radiant Copper) */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Theme Core Palette Tokens */
+  --palette-espresso: #5B4632;
+  --palette-sand: #F4D9A0;
+  --palette-copper: #C8792C;
+
+  /* Dark Theme Tokens (Default) */
+  --bg-primary: #130f0b;
+  --bg-secondary: #1d1611;
+  --bg-card: rgba(91, 70, 50, 0.32);
+  --bg-card-hover: rgba(91, 70, 50, 0.52);
+  --bg-input: rgba(29, 22, 17, 0.88);
+  --border-subtle: rgba(244, 217, 160, 0.14);
+  --border-focus: #C8792C;
+  --border-accent: rgba(200, 121, 44, 0.55);
+
+  --text-primary: #fdfaf6;
+  --text-secondary: #ebd9c5;
+  --text-muted: #a48c77;
+
+  --accent-cyan: #C8792C;
+  --accent-blue: #d98835;
+  --accent-purple: #5B4632;
+  --accent-indigo: #C8792C;
+  --accent-emerald: #10b981;
+  --accent-amber: #F4D9A0;
+  --accent-rose: #f43f5e;
+
+  --gradient-brand: linear-gradient(135deg, #C8792C 0%, #dc8f3e 48%, #5B4632 100%);
+  --gradient-glow: radial-gradient(circle at 50% 0%, rgba(200, 121, 44, 0.24), transparent 70%);
+  --glass-shadow: 0 14px 40px -8px rgba(19, 15, 11, 0.75);
+  --glow-shadow: 0 0 28px rgba(200, 121, 44, 0.35);
+}
+
+body.theme-light {
+  --bg-primary: #fcf9f4;
+  --bg-secondary: #f4ece0;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-card-hover: #ffffff;
+  --bg-input: #ffffff;
+  --border-subtle: rgba(91, 70, 50, 0.16);
+  --border-focus: #C8792C;
+  --border-accent: rgba(200, 121, 44, 0.55);
+
+  --text-primary: #2e2014;
+  --text-secondary: #5B4632;
+  --text-muted: #8c735d;
+
+  --gradient-brand: linear-gradient(135deg, #C8792C 0%, #b8691b 55%, #5B4632 100%);
+  --gradient-glow: radial-gradient(circle at 50% 0%, rgba(200, 121, 44, 0.14), transparent 70%);
+  --glass-shadow: 0 12px 32px -6px rgba(91, 70, 50, 0.12);
+  --glow-shadow: 0 0 22px rgba(200, 121, 44, 0.22);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Glass Card */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  transition: all 0.25s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-accent);
+}
+
+/* Radiant Buttons */
+.btn-primary {
+  background: var(--gradient-brand);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 22px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 16px rgba(200, 121, 44, 0.35);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(200, 121, 44, 0.55);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 9px 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-focus);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.badge-emerald {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.badge-indigo {
+  background: rgba(200, 121, 44, 0.16);
+  color: #F4D9A0;
+  border: 1px solid rgba(200, 121, 44, 0.4);
+}
+
+.badge-amber {
+  background: rgba(244, 217, 160, 0.18);
+  color: #F4D9A0;
+  border: 1px solid rgba(244, 217, 160, 0.4);
+}
+
+.badge-rose {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+}
+
+.badge-slate {
+  background: rgba(91, 70, 50, 0.25);
+  color: #ebd9c5;
+  border: 1px solid rgba(91, 70, 50, 0.4);
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(200, 121, 44, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(244, 217, 160, 0.45);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 4s infinite ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ========================================================
+   Mobile & Responsive Layout Utilities
+   ======================================================== */
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  padding: 32px 20px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 640px) {
+  .main-content {
+    padding: 16px 12px;
+  }
+}
+
+/* Header Responsive */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .header-bar {
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .header-brand-logo {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .header-brand-title {
+    font-size: 1.25rem !important;
+  }
+  .header-brand-subtitle {
+    display: none !important;
+  }
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 640px) {
+  .header-nav {
+    order: 3;
+    width: 100%;
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .header-nav button {
+    justify-content: center;
+    padding: 8px 10px !important;
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .header-actions .btn-text {
+    display: none;
+  }
+  .header-actions button {
+    padding: 8px !important;
+  }
+}
+
+/* Inspector Card Responsive */
+.inspector-card {
+  padding: 32px 36px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+@media (max-width: 640px) {
+  .inspector-card {
+    padding: 20px 14px;
+    border-radius: 14px;
+  }
+  .inspector-title {
+    font-size: 1.35rem !important;
+  }
+  .inspector-desc {
+    font-size: 0.85rem !important;
+  }
+}
+
+.url-input-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 8px 12px 8px 16px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.2s ease;
+}
+
+@media (max-width: 640px) {
+  .url-input-container {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 10px;
+  }
+  .url-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .url-actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .url-actions-row button {
+    justify-content: center;
+    padding: 10px 12px !important;
+  }
+}
+
+/* Result Card Responsive */
+.result-card {
+  padding: 30px 32px;
+  max-width: 860px;
+  margin: 24px auto 0;
+}
+
+@media (max-width: 640px) {
+  .result-card {
+    padding: 18px 14px;
+    margin: 16px auto 0;
+    border-radius: 14px;
+  }
+  .result-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  .result-meta-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .result-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .result-actions-left {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .result-actions-left button,
+  .result-actions-left a {
+    justify-content: center !important;
+    width: 100% !important;
+    padding: 9px 8px !important;
+  }
+  .result-actions-right {
+    width: 100% !important;
+  }
+  .result-actions-right button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px 16px !important;
+  }
+}
+
+/* Downloads Library Responsive */
+.downloads-container {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.downloads-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.downloads-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 640px) {
+  .downloads-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .downloads-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .downloads-filters {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    width: 100%;
+  }
+  .downloads-filters button {
+    padding: 8px 4px !important;
+    text-align: center;
+    justify-content: center;
+    font-size: 0.72rem !important;
+  }
+  .downloads-search {
+    width: 100% !important;
+  }
+  .downloads-search input {
+    width: 100% !important;
+  }
+}
+
+/* Download Item Responsive */
+.download-item-card {
+  padding: 18px 22px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+  .download-item-card {
+    padding: 14px 12px;
+    border-radius: 12px;
+  }
+  .download-item-row {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .download-item-main {
+    width: 100%;
+  }
+  .download-item-actions {
+    width: 100%;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 10px;
+  }
+}
+
+/* Modal Responsive */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.modal-dialog {
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 18px;
+  padding: 28px 30px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 640px) {
+  .modal-dialog {
+    padding: 20px 14px;
+    border-radius: 14px;
+    max-height: 88vh;
+  }
+  .modal-title {
+    font-size: 1.15rem !important;
+  }
+}
+
+/* ========================================================
+   Mobile Phone UI Enhancements (Smartphones & Touchscreens)
+   ======================================================== */
+
+/* Safe area support for mobile notches & navigation bars */
+.header-container {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+.main-content {
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+/* Touch friendly button active effects */
+button, .btn-primary, .btn-secondary {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active, .btn-primary:active, .btn-secondary:active {
+  transform: scale(0.97);
+}
+
+/* Adaptive Downloader Card */
+.downloader-box {
+  padding: 38px 24px;
+  border-radius: 24px;
+  transition: all 0.25s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Downloader Form Structure */
+.downloader-form {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloader-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 6px 8px 6px 14px;
+  flex: 1;
+  min-width: 0;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.25);
+  transition: border-color 0.2s ease;
+}
+
+.downloader-input-bar:focus-within {
+  border-color: var(--palette-copper);
+}
+
+.downloader-input-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-family: var(--font-body);
+  min-width: 0;
+}
+
+.downloader-paste-btn {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  border-radius: 10px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.downloader-download-btn {
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 12px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .downloader-box {
+    padding: 24px 16px !important;
+    border-radius: 20px !important;
+  }
+  .downloader-title {
+    font-size: 1.32rem !important;
+    margin-bottom: 16px !important;
+  }
+  .downloader-icon-wrap {
+    width: 56px !important;
+    height: 56px !important;
+    margin-bottom: 12px !important;
+  }
+  .downloader-icon-wrap svg {
+    width: 26px !important;
+    height: 26px !important;
+  }
+  .downloader-form {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+  .downloader-input-bar {
+    width: 100% !important;
+    padding: 8px 10px 8px 14px !important;
+    border-radius: 14px !important;
+  }
+  .downloader-download-btn {
+    width: 100% !important;
+    padding: 12px 18px !important;
+    font-size: 0.95rem !important;
+    border-radius: 14px !important;
+  }
+}
+
+/* Platform Badges / Chips */
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(91, 70, 50, 0.22);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.platform-chip:hover {
+  background: rgba(200, 121, 44, 0.2);
+  border-color: var(--palette-copper);
+  color: var(--text-primary);
+}
+
+/* ResultCard Mobile Responsive */
+@media (max-width: 640px) {
+  .result-card {
+    padding: 18px 14px !important;
+    border-radius: 16px !important;
+  }
+  .result-actions {
+    flex-direction: column-reverse !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .result-actions-left {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+  .result-actions-left button,
+  .result-actions-left a {
+    flex: 1 !important;
+    justify-content: center !important;
+    padding: 10px 12px !important;
+  }
+  .result-actions-right {
+    width: 100% !important;
+  }
+  .result-actions-right button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px 18px !important;
+  }
+}
+

@@ -1,0 +1,24 @@
+{
+  "name": "clipnest-monorepo",
+  "version": "1.0.0",
+  "description": "ClipNest - Cross-Platform Universal Video Downloader & Link Inspector Desktop App",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=@clipnest/api run dev",
+    "dev:web": "npm --workspace=@clipnest/desktop run dev",
+    "dev:desktop": "npm --workspace=@clipnest/desktop run dev:desktop",
+    "dev": "node scripts/dev.js",
+    "build": "npm run build --workspaces --if-present",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
