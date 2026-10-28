@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm --workspace=@clipnest/desktop run build",
+  "buildCommand": "npm --workspace=@clipnest/shared run build && npm --workspace=@clipnest/desktop run build",
   "outputDirectory": "apps/desktop/dist",
   "installCommand": "npm install",
   "framework": "vite",
