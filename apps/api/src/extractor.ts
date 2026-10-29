@@ -372,10 +372,10 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     safeFilename += '.mp4';
   }
 
-  // Format selection: prioritize fast 1080p/720p universal mp4 streams (prevents slow 4K/8K downloads)
+  // Format selection: auto download in 1080p Full HD, falling back to highest available up to 1080p
   const formatSelection = compress
     ? 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
-    : 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
+    : 'bestvideo[height=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
 
   let currentUrl = url;
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;

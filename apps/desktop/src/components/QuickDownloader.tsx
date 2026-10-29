@@ -73,7 +73,7 @@ export const QuickDownloader: React.FC = () => {
     setStatusMessage(
       compressVideo
         ? 'Fast download starting (480p compact)...'
-        : 'Fast download starting (HD)...'
+        : 'Downloading 1080p Full HD stream...'
     );
 
     // Immediately trigger browser download — zero delay!
@@ -415,7 +415,7 @@ export const QuickDownloader: React.FC = () => {
                 }}
               >
                 <Download size={18} />
-                <span>Save Video ({compressVideo ? '480p' : 'HD'})</span>
+                <span>Save Video ({compressVideo ? '480p' : '1080p Full HD'})</span>
               </a>
             )}
 
