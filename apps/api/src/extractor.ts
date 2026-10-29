@@ -372,22 +372,24 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     safeFilename += '.mp4';
   }
 
-  // Format selection: prioritize universal mp4/best video + audio streams
+  // Format selection: prioritize fast 1080p/720p universal mp4 streams (prevents slow 4K/8K downloads)
   const formatSelection = compress
     ? 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
-    : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+    : 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
 
   let currentUrl = url;
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const tempOutputFile = path.join(os.tmpdir(), `${tempPrefix}.%(ext)s`);
+  const tempOutputFile = path.join(os.tmpdir(), `${tempPrefix}_%(title).70B.%(ext)s`);
 
   const buildArgs = (useGeneric: boolean) => {
     const args = [
       '-o', tempOutputFile,
       '-f', formatSelection,
       '--merge-output-format', 'mp4',
+      '--concurrent-fragments', '4',
       '--no-warnings',
       '--no-playlist',
+      '--playlist-items', '1',
       '--no-check-certificates',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
@@ -499,7 +501,10 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       const ext = path.extname(actualFile).toLowerCase();
       const isAudio = ext === '.mp3' || ext === '.m4a' || ext === '.aac';
       const outputExt = isAudio ? ext : '.mp4';
-      const safeOutputName = safeFilename.replace(/\.[^.]+$/, '') + outputExt;
+      const fileBase = path.basename(actualFile, path.extname(actualFile));
+      const extractedTitle = fileBase.startsWith(tempPrefix) ? fileBase.slice(tempPrefix.length + 1) : '';
+      const finalTitle = extractedTitle || safeFilename.replace(/\.[^.]+$/, '');
+      const safeOutputName = `${finalTitle}${outputExt}`;
       const asciiName = safeOutputName.replace(/[^a-zA-Z0-9._-]/g, '_') || `video${outputExt}`;
 
       res.setHeader('Content-Length', stat.size);

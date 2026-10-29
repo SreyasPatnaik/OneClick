@@ -45,98 +45,57 @@ export const QuickDownloader: React.FC = () => {
   }, [compressVideo]);
 
   // Main automatic process & download pipeline
-  const handleProcessUrl = async (inputUrl: string) => {
+  const handleProcessUrl = (inputUrl: string) => {
     const cleanUrl = inputUrl.trim();
     if (!cleanUrl) return;
 
     setUrl(cleanUrl);
-    setStatus('analyzing');
-    setStatusMessage('Analyzing and extracting video stream...');
     setDownloadedTitle('');
-    setDownloadUrl('');
-    setDownloadFilename('');
 
-    try {
-      const res: LinkInspectionResult = await inspectLink(cleanUrl);
-
-      if (res.status === 'invalid_link') {
-        setStatus('error');
-        setStatusMessage(res.message || 'The provided link is not a valid URL.');
-        return;
-      }
-
-      // Check if direct download or extracted stream is available, or construct universal stream URL
-      let streamUrl = res.directMediaUrl || (res.status === 'direct_download_available' ? res.url : null);
-      if (!streamUrl && cleanUrl) {
-        streamUrl = `http://${window.location.hostname}:4000/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}&title=${encodeURIComponent(res.title || 'video')}`;
-      }
-
-      if (streamUrl) {
-        setStatus('downloading');
-        const title = res.title || 'video';
-        setDownloadedTitle(title);
-        setStatusMessage(
-          compressVideo
-            ? 'Preparing compressed video stream...'
-            : 'Preparing highest quality video stream...'
-        );
-
-        // Dynamically fix hostname for phone/WiFi access, Cloudflare Tunnels, or remote backend
-        let finalDownloadUrl = streamUrl;
-        if (finalDownloadUrl.includes('/api/v1/download/stream')) {
-          try {
-            const rawApi = (import.meta.env.VITE_API_URL as string) || '';
-            if (rawApi) {
-              const base = rawApi.replace(/\/$/, '');
-              const parsed = new URL(finalDownloadUrl);
-              finalDownloadUrl = `${base}${parsed.pathname}${parsed.search}`;
-            } else if (window.location.protocol === 'https:' || window.location.port === '5173') {
-              const parsed = new URL(finalDownloadUrl);
-              finalDownloadUrl = `${parsed.pathname}${parsed.search}`;
-            } else {
-              const parsed = new URL(finalDownloadUrl);
-              parsed.hostname = window.location.hostname;
-              parsed.port = '4000';
-              finalDownloadUrl = parsed.toString();
-            }
-          } catch {
-            // retain finalDownloadUrl
-          }
-        }
-
-        // Append compression parameter to stream URL if enabled
-        if (compressVideo && finalDownloadUrl.includes('/api/v1/download/stream')) {
-          finalDownloadUrl += '&compress=true';
-        }
-
-        let cleanName = title.replace(/[/\\?%*:|"<>]/g, '_').trim();
-        if (compressVideo && !cleanName.includes('compressed')) {
-          cleanName += '_compressed';
-        }
-        if (!/\.(mp4|webm|mkv|mov|m4v)$/i.test(cleanName)) {
-          cleanName += '.mp4';
-        }
-
-        setDownloadUrl(finalDownloadUrl);
-        setDownloadFilename(cleanName);
-
-        // Trigger automatic browser download
-        triggerBrowserDownload(finalDownloadUrl, cleanName);
-
-        // Transition to completed ready state
-        setTimeout(() => {
-          setStatus('completed');
-          setStatusMessage(
-            compressVideo
-              ? 'Compressed video ready!'
-              : 'Video ready!'
-          );
-        }, 1200);
-      }
-    } catch (err: any) {
-      setStatus('error');
-      setStatusMessage(err.message || 'Failed to process link. Please verify the URL and try again.');
+    // Dynamically build download stream URL immediately
+    const rawApi = (import.meta.env.VITE_API_URL as string) || '';
+    let finalDownloadUrl = `/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
+    if (rawApi) {
+      finalDownloadUrl = `${rawApi.replace(/\/$/, '')}${finalDownloadUrl}`;
+    } else if (window.location.protocol === 'https:' || window.location.port === '5173') {
+      finalDownloadUrl = `/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
+    } else {
+      finalDownloadUrl = `http://${window.location.hostname}:4000/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
     }
+
+    if (compressVideo) {
+      finalDownloadUrl += '&compress=true';
+    }
+
+    setDownloadUrl(finalDownloadUrl);
+    setDownloadFilename('video.mp4');
+    setStatus('downloading');
+    setStatusMessage(
+      compressVideo
+        ? 'Fast download starting (480p compact)...'
+        : 'Fast download starting (HD)...'
+    );
+
+    // Immediately trigger browser download — zero delay!
+    triggerBrowserDownload(finalDownloadUrl, 'video.mp4');
+
+    // In parallel, fetch inspection metadata for title without blocking download start
+    inspectLink(cleanUrl)
+      .then((res: LinkInspectionResult) => {
+        if (res.title) {
+          setDownloadedTitle(res.title);
+          let cleanName = res.title.replace(/[/\\?%*:|"<>]/g, '_').trim();
+          if (compressVideo && !cleanName.includes('compressed')) cleanName += '_compressed';
+          if (!/\.(mp4|webm|mkv|mov|m4v)$/i.test(cleanName)) cleanName += '.mp4';
+          setDownloadFilename(cleanName);
+        }
+        setStatus('completed');
+        setStatusMessage(compressVideo ? 'Compressed video ready!' : 'Video ready!');
+      })
+      .catch(() => {
+        setStatus('completed');
+        setStatusMessage('Video download in progress!');
+      });
   };
 
   const triggerBrowserDownload = (downloadUrl: string, cleanName: string) => {
