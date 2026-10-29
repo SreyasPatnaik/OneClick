@@ -263,7 +263,7 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     '--playlist-items', '1',
     '--skip-download',
     '--no-check-certificates',
-    '--extractor-args', 'youtube:player_client=ios,android,web',
+    '--extractor-args', 'youtube:player_client=android,mweb,web_creator;player_skip=configs,webpage',
     '--user-agent',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
   ];
@@ -393,7 +393,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--no-playlist',
       '--playlist-items', '1',
       '--no-check-certificates',
-      '--extractor-args', 'youtube:player_client=ios,android,web',
+      '--extractor-args', 'youtube:player_client=android,mweb,web_creator;player_skip=configs,webpage',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     ];
@@ -452,8 +452,9 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       if (code !== 0 || !actualFile) {
         console.warn(`[Extractor Stream] yt-dlp exited with code ${code}${useGeneric ? ' (generic)' : ''}`);
 
-        // If first attempt failed and generic not tried yet, retry
-        if (!useGeneric && !res.headersSent) {
+        // If first attempt failed and generic not tried yet, retry ONLY for unknown/non-platform sites
+        const isKnownPlatform = /youtube\.com|youtu\.be|instagram\.com|tiktok\.com|twitter\.com|x\.com|facebook\.com|fb\.watch|reddit\.com|vimeo\.com/i.test(currentUrl);
+        if (!useGeneric && !isKnownPlatform && !res.headersSent) {
           console.log('[Extractor Stream] Retrying with generic extractor...');
           cleanupTempFiles();
           attemptDownload(true);

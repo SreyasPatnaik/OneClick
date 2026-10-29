@@ -20,7 +20,7 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
 });
 
 apiRouter.get('/download/stream', (req: Request, res: Response): void => {
-  const targetUrl = req.query.url as string;
+  let targetUrl = (req.query.url as string) || '';
   const rawTitle = (req.query.title as string) || 'download';
   const compress = req.query.compress === 'true' || req.query.compress === '1';
 
@@ -28,6 +28,32 @@ apiRouter.get('/download/stream', (req: Request, res: Response): void => {
     res.status(400).send('Missing target video URL');
     return;
   }
+
+  targetUrl = targetUrl.trim();
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = `https://${targetUrl}`;
+  }
+
+  // Normalize youtu.be, shorts, and share tracking URLs to canonical watch links
+  try {
+    const parsed = new URL(targetUrl);
+    if (parsed.hostname.toLowerCase().includes('youtu.be')) {
+      const vidId = parsed.pathname.slice(1).split('/')[0]?.split('?')[0];
+      if (vidId) {
+        targetUrl = `https://www.youtube.com/watch?v=${vidId}`;
+      }
+    } else if (parsed.hostname.toLowerCase().includes('youtube.com')) {
+      const vidId = parsed.searchParams.get('v');
+      if (vidId) {
+        targetUrl = `https://www.youtube.com/watch?v=${vidId}`;
+      } else if (parsed.pathname.includes('/shorts/')) {
+        const shortId = parsed.pathname.split('/shorts/')[1]?.split('/')[0]?.split('?')[0];
+        if (shortId) {
+          targetUrl = `https://www.youtube.com/watch?v=${shortId}`;
+        }
+      }
+    }
+  } catch {}
 
   const filename = `${rawTitle.replace(/[/\\?%*:|"<>]/g, '_')}${compress ? '_compact' : ''}.mp4`;
   streamMediaDownload(targetUrl, filename, res, compress);
