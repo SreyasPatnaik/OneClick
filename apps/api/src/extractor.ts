@@ -372,14 +372,10 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     safeFilename += '.mp4';
   }
 
-  const asciiName = safeFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'media_download.mp4';
-  res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
-  res.setHeader('Content-Type', 'video/mp4');
-
-  // Format selection: supports both video+audio streams, audio-only streams, and single streams
+  // Format selection: prioritize universal mp4/best video + audio streams
   const formatSelection = compress
-    ? 'bestvideo[ext=mp4][vcodec^=avc1][height<=480]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best'
-    : 'bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+    ? 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+    : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
 
   let currentUrl = url;
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -389,6 +385,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     const args = [
       '-o', tempOutputFile,
       '-f', formatSelection,
+      '--merge-output-format', 'mp4',
       '--no-warnings',
       '--no-playlist',
       '--no-check-certificates',
@@ -498,12 +495,16 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       }
 
       // Stream the downloaded file to client
+      const stat = fs.statSync(actualFile);
       const ext = path.extname(actualFile).toLowerCase();
-      if (ext === '.mp3' || ext === '.m4a' || ext === '.aac') {
-        res.setHeader('Content-Type', 'audio/mpeg');
-      } else {
-        res.setHeader('Content-Type', 'video/mp4');
-      }
+      const isAudio = ext === '.mp3' || ext === '.m4a' || ext === '.aac';
+      const outputExt = isAudio ? ext : '.mp4';
+      const safeOutputName = safeFilename.replace(/\.[^.]+$/, '') + outputExt;
+      const asciiName = safeOutputName.replace(/[^a-zA-Z0-9._-]/g, '_') || `video${outputExt}`;
+
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(safeOutputName)}`);
+      res.setHeader('Content-Type', isAudio ? 'audio/mpeg' : 'video/mp4');
 
       const readStream = fs.createReadStream(actualFile);
       readStream.pipe(res);

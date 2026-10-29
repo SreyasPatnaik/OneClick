@@ -22,6 +22,8 @@ export const QuickDownloader: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'downloading' | 'completed' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [downloadedTitle, setDownloadedTitle] = useState('');
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [downloadFilename, setDownloadFilename] = useState('');
   const [copiedToast, setCopiedToast] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -51,6 +53,8 @@ export const QuickDownloader: React.FC = () => {
     setStatus('analyzing');
     setStatusMessage('Analyzing and extracting video stream...');
     setDownloadedTitle('');
+    setDownloadUrl('');
+    setDownloadFilename('');
 
     try {
       const res: LinkInspectionResult = await inspectLink(cleanUrl);
@@ -73,8 +77,8 @@ export const QuickDownloader: React.FC = () => {
         setDownloadedTitle(title);
         setStatusMessage(
           compressVideo
-            ? 'Compressing stream & downloading to Gallery...'
-            : 'Downloading video directly to Gallery...'
+            ? 'Preparing compressed video stream...'
+            : 'Preparing highest quality video stream...'
         );
 
         // Dynamically fix hostname for phone/WiFi access, Cloudflare Tunnels, or remote backend
@@ -105,18 +109,29 @@ export const QuickDownloader: React.FC = () => {
           finalDownloadUrl += '&compress=true';
         }
 
-        // Trigger automatic native / gallery download
-        triggerBrowserDownload(finalDownloadUrl, title, compressVideo);
+        let cleanName = title.replace(/[/\\?%*:|"<>]/g, '_').trim();
+        if (compressVideo && !cleanName.includes('compressed')) {
+          cleanName += '_compressed';
+        }
+        if (!/\.(mp4|webm|mkv|mov|m4v)$/i.test(cleanName)) {
+          cleanName += '.mp4';
+        }
 
-        // Mark as completed
+        setDownloadUrl(finalDownloadUrl);
+        setDownloadFilename(cleanName);
+
+        // Trigger automatic browser download
+        triggerBrowserDownload(finalDownloadUrl, cleanName);
+
+        // Transition to completed ready state
         setTimeout(() => {
           setStatus('completed');
           setStatusMessage(
             compressVideo
-              ? 'Successfully compressed & saved to your Gallery!'
-              : 'Successfully downloaded & saved to your Gallery!'
+              ? 'Compressed video ready!'
+              : 'Video ready!'
           );
-        }, 1500);
+        }, 1200);
       }
     } catch (err: any) {
       setStatus('error');
@@ -124,23 +139,22 @@ export const QuickDownloader: React.FC = () => {
     }
   };
 
-  const triggerBrowserDownload = (downloadUrl: string, title: string, isCompressed: boolean) => {
-    let cleanName = title.replace(/[/\\?%*:|"<>]/g, '_').trim();
-    if (isCompressed && !cleanName.includes('compressed')) {
-      cleanName += '_compressed';
+  const triggerBrowserDownload = (downloadUrl: string, cleanName: string) => {
+    try {
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = cleanName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(a);
+        } catch {}
+      }, 100);
+    } catch (e) {
+      console.warn('Auto download blocked by browser:', e);
     }
-    if (!/\.(mp4|webm|mkv|mov|m4v)$/i.test(cleanName)) {
-      cleanName += '.mp4';
-    }
-
-    // Direct browser/phone gallery download
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = cleanName;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
   };
 
   // Clipboard Paste button handler
@@ -191,6 +205,8 @@ export const QuickDownloader: React.FC = () => {
     setStatus('idle');
     setStatusMessage('');
     setDownloadedTitle('');
+    setDownloadUrl('');
+    setDownloadFilename('');
     inputRef.current?.focus();
   };
 
@@ -263,13 +279,7 @@ export const QuickDownloader: React.FC = () => {
                   className="downloader-input-field"
                   placeholder="Paste link here..."
                   value={url}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setUrl(val);
-                    if (val.trim().startsWith('http://') || val.trim().startsWith('https://')) {
-                      handleProcessUrl(val.trim());
-                    }
-                  }}
+                  onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && url.trim()) {
                       handleProcessUrl(url.trim());
@@ -422,20 +432,44 @@ export const QuickDownloader: React.FC = () => {
                 marginBottom: 8,
               }}
             >
-              Saved to Gallery!
+              Video Ready!
             </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
-              {downloadedTitle || 'Your video'} has been downloaded to your device.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 18, wordBreak: 'break-word', padding: '0 12px' }}>
+              {downloadedTitle || 'Your video'}
             </p>
 
-            <button
-              onClick={handleReset}
-              className="btn-primary"
-              style={{ padding: '10px 24px', fontSize: '0.9rem' }}
-            >
-              <ArrowRight size={16} />
-              <span>Download Another Video</span>
-            </button>
+            {downloadUrl && (
+              <a
+                href={downloadUrl}
+                download={downloadFilename || 'video.mp4'}
+                className="btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '12px 28px',
+                  fontSize: '0.95rem',
+                  textDecoration: 'none',
+                  marginBottom: 14,
+                  boxShadow: '0 4px 18px rgba(200, 121, 44, 0.4)',
+                }}
+              >
+                <Download size={18} />
+                <span>Save Video ({compressVideo ? '480p' : 'HD'})</span>
+              </a>
+            )}
+
+            <div>
+              <button
+                onClick={handleReset}
+                className="btn-secondary"
+                style={{ padding: '8px 18px', fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <RotateCcw size={14} />
+                <span>Download Another Link</span>
+              </button>
+            </div>
           </div>
         )}
 

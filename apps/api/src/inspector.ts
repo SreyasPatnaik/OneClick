@@ -49,7 +49,11 @@ export async function inspectUrl(targetUrl: string, reqHost?: string): Promise<L
         sizeBytes: extracted.filesize || null,
         availableActions: ['download', 'copy_url', 'open_official'],
         message: `Extracted ${extracted.resolution || 'media'} stream ready for download.`,
-        directMediaUrl: buildDownloadUrl(extracted.directUrl || targetUrl, extracted.title, reqHost),
+        directMediaUrl: buildDownloadUrl(
+          (extracted.extractor === 'html_media_scraper' && extracted.directUrl) ? extracted.directUrl : targetUrl,
+          extracted.title,
+          reqHost
+        ),
         inspectionTimestamp: new Date().toISOString(),
       };
     }
