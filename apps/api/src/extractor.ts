@@ -260,8 +260,10 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     '--dump-single-json',
     '--no-warnings',
     '--no-playlist',
+    '--playlist-items', '1',
     '--skip-download',
     '--no-check-certificates',
+    '--extractor-args', 'youtube:player_client=ios,android,web',
     '--user-agent',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
   ];
@@ -372,10 +374,10 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     safeFilename += '.mp4';
   }
 
-  // Format selection: auto download in 1080p Full HD, falling back to highest available up to 1080p
+  // Format selection: auto download in 1080p Full HD (both horizontal & vertical), falling back to highest available
   const formatSelection = compress
-    ? 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
-    : 'bestvideo[height=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
+    ? 'bestvideo[height<=480]+bestaudio/bestvideo[width<=480]+bestaudio/best[height<=480]/best'
+    : 'bestvideo[height<=1080]+bestaudio/bestvideo[width<=1080]+bestaudio/best[height<=1080]/best[width<=1080]/bestvideo+bestaudio/best';
 
   let currentUrl = url;
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -391,6 +393,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--no-playlist',
       '--playlist-items', '1',
       '--no-check-certificates',
+      '--extractor-args', 'youtube:player_client=ios,android,web',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     ];
@@ -418,12 +421,12 @@ export function streamMediaDownload(url: string, filename: string, res: Response
   const attemptDownload = (useGeneric: boolean) => {
     const args = buildArgs(useGeneric);
     const child = spawn(ytDlpPath, args, { windowsHide: true });
+    let fullStderr = '';
 
     child.stderr.on('data', (data) => {
       const msg = data.toString();
-      if (msg.includes('ERROR:')) {
-        console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}]`, msg.trim());
-      }
+      fullStderr += msg;
+      console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}]`, msg.trim());
     });
 
     child.on('error', (err) => {
@@ -468,13 +471,15 @@ export function streamMediaDownload(url: string, filename: string, res: Response
                 currentUrl = scraped.directUrl;
                 attemptDownload(false);
               } else if (!res.headersSent) {
-                res.status(500).end('Download failed — no extractable media stream found on this page.');
+                const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
+                res.status(500).end(errorLine || 'Download failed — no extractable media stream found on this page.');
                 cleanupTempFiles();
               }
             })
             .catch(() => {
               if (!res.headersSent) {
-                res.status(500).end('Download failed — no extractable media stream found on this page.');
+                const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
+                res.status(500).end(errorLine || 'Download failed — no extractable media stream found on this page.');
                 cleanupTempFiles();
               }
             });
@@ -482,7 +487,8 @@ export function streamMediaDownload(url: string, filename: string, res: Response
         }
 
         if (!res.headersSent) {
-          res.status(500).end('Download failed — no extractable media stream found.');
+          const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
+          res.status(500).end(errorLine || 'Download failed — no extractable media stream found.');
           cleanupTempFiles();
           return;
         }
