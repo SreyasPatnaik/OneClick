@@ -263,7 +263,8 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     '--playlist-items', '1',
     '--skip-download',
     '--no-check-certificates',
-    '--extractor-args', 'youtube:player_client=android,mweb,web_creator;player_skip=configs,webpage',
+    '--extractor-args', 'youtube:player_client=visionos,android,web',
+    '--js-runtimes', 'node',
     '--user-agent',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
   ];
@@ -393,7 +394,8 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--no-playlist',
       '--playlist-items', '1',
       '--no-check-certificates',
-      '--extractor-args', 'youtube:player_client=android,mweb,web_creator;player_skip=configs,webpage',
+      '--extractor-args', 'youtube:player_client=visionos,android,web',
+      '--js-runtimes', 'node',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     ];
