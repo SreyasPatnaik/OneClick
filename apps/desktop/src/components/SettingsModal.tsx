@@ -28,6 +28,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [savedToast, setSavedToast] = useState(false);
   const [hasCookies, setHasCookies] = useState(false);
+  const [availableBrowsers, setAvailableBrowsers] = useState<string[]>([]);
   const [cookieInput, setCookieInput] = useState('');
   const [cookieStatusMsg, setCookieStatusMsg] = useState('');
   const isElectron = Boolean(window.electronAPI?.isElectron);
@@ -38,6 +39,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       .then((res) => res.json())
       .then((data) => {
         setHasCookies(Boolean(data.hasCookies));
+        if (Array.isArray(data.availableBrowsers)) {
+          setAvailableBrowsers(data.availableBrowsers);
+        }
       })
       .catch(() => {});
   }, [isOpen]);
@@ -263,6 +267,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Instagram Stories and private reels require logged-in cookies. Use the free browser extension{' '}
               <strong style={{ color: 'var(--text-primary)' }}>Get cookies.txt LOCALLY</strong> in Chrome/Edge/Firefox to export cookies while logged in, then paste or upload below.
             </p>
+
+            {availableBrowsers.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginBottom: 10,
+                  fontSize: '0.75rem',
+                  color: 'var(--palette-sand)',
+                  background: 'rgba(200, 121, 44, 0.1)',
+                  padding: '7px 10px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(200, 121, 44, 0.25)',
+                }}
+              >
+                <span>🌐 Auto-sync supported from: <strong>{availableBrowsers.map((b) => b.charAt(0).toUpperCase() + b.slice(1)).join(', ')}</strong> (close browser before downloading)</span>
+              </div>
+            )}
 
             <textarea
               rows={3}

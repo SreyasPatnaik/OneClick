@@ -9,7 +9,7 @@ import {
 } from '@clipnest/shared';
 import { inspectUrl } from './inspector.js';
 import { SSRFSecurityError } from './ssrf-shield.js';
-import { streamMediaDownload, getCookiesPath, getAvailableBrowser } from './extractor.js';
+import { streamMediaDownload, getCookiesPath, getAvailableBrowsers } from './extractor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +22,7 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
     service: 'clipnest-api',
     version: '1.0.0',
     hasCookies: Boolean(getCookiesPath()),
-    browserCookies: getAvailableBrowser() || null,
+    availableBrowsers: getAvailableBrowsers(),
     timestamp: new Date().toISOString(),
   });
 });
@@ -35,6 +35,7 @@ apiRouter.get('/cookies/status', (_req: Request, res: Response) => {
   res.json({
     hasCookies: Boolean(cookieFile),
     path: cookieFile ? path.basename(cookieFile) : null,
+    availableBrowsers: getAvailableBrowsers(),
   });
 });
 

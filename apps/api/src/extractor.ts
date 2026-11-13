@@ -149,54 +149,123 @@ export function getCookiesPath(): string | null {
 
 /**
  * Detect which browsers are available on the system for cookie extraction.
- * Returns the first available browser name that yt-dlp accepts.
+ * Returns an array of browser names that yt-dlp accepts (e.g. ['chrome', 'edge', 'brave', 'firefox', ...]).
  */
-function detectAvailableBrowser(): string | null {
-  const browsers: { name: string; checks: string[] }[] = [
-    { name: 'edge', checks: ['msedge', 'msedge.exe'] },
+function detectAvailableBrowsers(): string[] {
+  const detected = new Set<string>();
+
+  // 1. Check PATH via where.exe / which
+  const browserBinaries: { name: string; checks: string[] }[] = [
     { name: 'chrome', checks: ['chrome', 'chrome.exe', 'google-chrome'] },
-    { name: 'firefox', checks: ['firefox', 'firefox.exe'] },
+    { name: 'edge', checks: ['msedge', 'msedge.exe'] },
     { name: 'brave', checks: ['brave', 'brave.exe'] },
+    { name: 'firefox', checks: ['firefox', 'firefox.exe'] },
     { name: 'opera', checks: ['opera', 'opera.exe'] },
   ];
 
-  for (const browser of browsers) {
-    for (const bin of browser.checks) {
+  for (const b of browserBinaries) {
+    for (const bin of b.checks) {
       try {
         const cmd = process.platform === 'win32' ? `where.exe ${bin}` : `which ${bin}`;
         execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
-        console.log(`[Extractor] Detected browser: ${browser.name}`);
-        return browser.name;
+        detected.add(b.name);
+        break;
       } catch {}
     }
   }
 
-  // Check Windows registry for Edge (common install path)
+  // 2. Check standard Windows installation directories
   if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const progFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const progFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+
+    // Chrome paths
+    const chromePaths = [
+      path.join(progFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(progFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ];
+    for (const p of chromePaths) {
+      if (fs.existsSync(p)) {
+        detected.add('chrome');
+        break;
+      }
+    }
+
+    // Edge paths
     const edgePaths = [
-      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      path.join(progFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(progFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     ];
     for (const p of edgePaths) {
       if (fs.existsSync(p)) {
-        console.log('[Extractor] Detected Edge via known path');
-        return 'edge';
+        detected.add('edge');
+        break;
+      }
+    }
+
+    // Brave paths
+    const bravePaths = [
+      path.join(progFiles, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+    ];
+    for (const p of bravePaths) {
+      if (fs.existsSync(p)) {
+        detected.add('brave');
+        break;
+      }
+    }
+
+    // Firefox paths
+    const firefoxPaths = [
+      path.join(progFiles, 'Mozilla Firefox', 'firefox.exe'),
+      path.join(progFilesX86, 'Mozilla Firefox', 'firefox.exe'),
+    ];
+    for (const p of firefoxPaths) {
+      if (fs.existsSync(p)) {
+        detected.add('firefox');
+        break;
       }
     }
   }
 
-  return null;
+  // Prioritize Chrome and Edge first, then other browsers
+  const priorityOrder = ['chrome', 'edge', 'brave', 'firefox', 'opera'];
+  const result: string[] = [];
+  for (const name of priorityOrder) {
+    if (detected.has(name)) {
+      result.push(name);
+    }
+  }
+  for (const name of detected) {
+    if (!result.includes(name)) {
+      result.push(name);
+    }
+  }
+
+  console.log('[Extractor] Available browsers for cookies:', result);
+  return result;
 }
 
-let cachedBrowser: string | null | undefined = undefined;
+let cachedBrowsers: string[] | undefined = undefined;
 
 /**
- * Get the detected browser (cached after first call)
+ * Get all detected browsers on the system (cached after first call)
+ */
+export function getAvailableBrowsers(): string[] {
+  if (cachedBrowsers !== undefined) return cachedBrowsers;
+  cachedBrowsers = detectAvailableBrowsers();
+  return cachedBrowsers;
+}
+
+/**
+ * Get primary detected browser (cached after first call)
  */
 export function getAvailableBrowser(): string | null {
-  if (cachedBrowser !== undefined) return cachedBrowser;
-  cachedBrowser = detectAvailableBrowser();
-  return cachedBrowser;
+  const browsers = getAvailableBrowsers();
+  return browsers[0] || null;
 }
 
 /**
@@ -207,20 +276,14 @@ export async function extractMediaMetadata(url: string): Promise<ExtractionResul
   const result = await runYtDlpExtraction(url, false);
   if (result.media) return result;
 
-  // Strategy 1b: If auth required and no cookies.txt, auto-try browser cookies
+  // Strategy 1b: If auth required and no cookies.txt, auto-try browser cookies (Chrome, Edge, etc.)
   if (result.requiresAuth && !getCookiesPath()) {
-    const browser = getAvailableBrowser();
-    if (browser) {
+    const browsers = getAvailableBrowsers();
+    for (const browser of browsers) {
       console.log(`[Extractor] Auth required, auto-trying --cookies-from-browser ${browser}`);
       const browserResult = await runYtDlpExtraction(url, false, browser);
-      if (browserResult.media) return browserResult;
-      // If browser cookies also fail, fall through with original auth error
-      // but update the message to reflect we tried
-      if (browserResult.requiresAuth) {
-        return {
-          ...browserResult,
-          errorMessage: browserResult.errorMessage || result.errorMessage,
-        };
+      if (browserResult.media) {
+        return browserResult;
       }
     }
     return result;
@@ -519,7 +582,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
 
   const ffmpegDir = getFfmpegDir();
   const cookiesPath = getCookiesPath();
-  const detectedBrowser = getAvailableBrowser();
+  const detectedBrowsers = getAvailableBrowsers();
 
   let safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '_').trim();
   if (!/\.(mp4|webm|mkv|mov|m4v|mp3|m4a)$/i.test(safeFilename)) {
@@ -574,15 +637,16 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     } catch {}
   };
 
-  const attemptDownload = (useGeneric: boolean, useBrowserCookies?: string) => {
-    const args = buildArgs(useGeneric, useBrowserCookies);
+  const attemptDownload = (useGeneric: boolean, browserIndex = -1) => {
+    const currentBrowser = browserIndex >= 0 && browserIndex < detectedBrowsers.length ? detectedBrowsers[browserIndex] : undefined;
+    const args = buildArgs(useGeneric, currentBrowser);
     const child = spawn(ytDlpPath, args, { windowsHide: true });
     let fullStderr = '';
 
     child.stderr.on('data', (data) => {
       const msg = data.toString();
       fullStderr += msg;
-      console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}${useBrowserCookies ? ` Browser:${useBrowserCookies}` : ''}]`, msg.trim());
+      console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}${currentBrowser ? ` Browser:${currentBrowser}` : ''}]`, msg.trim());
     });
 
     child.on('error', (err) => {
@@ -609,18 +673,22 @@ export function streamMediaDownload(url: string, filename: string, res: Response
           fullStderr
         );
 
-        // If auth required and we haven't tried browser cookies yet, auto-retry
-        if (isAuthRequired && !useBrowserCookies && !cookiesPath && detectedBrowser && !res.headersSent) {
-          console.log(`[Extractor Stream] Auth required, auto-retrying with --cookies-from-browser ${detectedBrowser}`);
-          cleanupTempFiles();
-          attemptDownload(useGeneric, detectedBrowser);
-          return;
+        // If auth required and no cookiesPath, try each available browser (Chrome, Edge, etc.)
+        if (isAuthRequired && !cookiesPath && !res.headersSent) {
+          const nextBrowserIndex = browserIndex + 1;
+          if (nextBrowserIndex < detectedBrowsers.length) {
+            const nextBrowser = detectedBrowsers[nextBrowserIndex];
+            console.log(`[Extractor Stream] Auth required, auto-retrying with --cookies-from-browser ${nextBrowser} (${nextBrowserIndex + 1}/${detectedBrowsers.length})`);
+            cleanupTempFiles();
+            attemptDownload(useGeneric, nextBrowserIndex);
+            return;
+          }
         }
 
         if (isAuthRequired && !res.headersSent) {
           cleanupTempFiles();
           if (/instagram/i.test(currentUrl)) {
-            res.status(401).end('Instagram authentication required. Instagram stories and protected content require login cookies. Please provide cookies in Settings.');
+            res.status(401).end('Instagram authentication required. Instagram stories and protected content require login cookies. Please provide cookies in Settings or close your browser.');
           } else {
             res.status(401).end('Authentication required. This video requires login, cookies, or verification to access.');
           }
