@@ -9,7 +9,7 @@ import {
 } from '@clipnest/shared';
 import { inspectUrl } from './inspector.js';
 import { SSRFSecurityError } from './ssrf-shield.js';
-import { streamMediaDownload, getCookiesPath, getAvailableBrowsers } from './extractor.js';
+import { streamMediaDownload, getCookiesPath, getAvailableBrowsers, cleanTargetUrl } from './extractor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,57 +66,16 @@ apiRouter.delete('/cookies', (_req: Request, res: Response) => {
 });
 
 apiRouter.get('/download/stream', (req: Request, res: Response): void => {
-  let targetUrl = (req.query.url as string) || '';
+  const rawUrl = (req.query.url as string) || '';
   const rawTitle = (req.query.title as string) || 'download';
   const compress = req.query.compress === 'true' || req.query.compress === '1';
 
-  if (!targetUrl || typeof targetUrl !== 'string') {
+  if (!rawUrl || typeof rawUrl !== 'string') {
     res.status(400).send('Missing target video URL');
     return;
   }
 
-  targetUrl = targetUrl.trim();
-  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-    targetUrl = `https://${targetUrl}`;
-  }
-
-  // Normalize YouTube & Instagram URLs
-  try {
-    const parsed = new URL(targetUrl);
-    const host = parsed.hostname.toLowerCase();
-
-    if (host.includes('youtu.be')) {
-      const vidId = parsed.pathname.slice(1).split('/')[0]?.split('?')[0];
-      if (vidId) {
-        targetUrl = `https://www.youtube.com/watch?v=${vidId}`;
-      }
-    } else if (host.includes('youtube.com')) {
-      const vidId = parsed.searchParams.get('v');
-      if (vidId) {
-        targetUrl = `https://www.youtube.com/watch?v=${vidId}`;
-      } else if (parsed.pathname.includes('/shorts/')) {
-        const shortId = parsed.pathname.split('/shorts/')[1]?.split('/')[0]?.split('?')[0];
-        if (shortId) {
-          targetUrl = `https://www.youtube.com/watch?v=${shortId}`;
-        }
-      } else if (parsed.pathname.includes('/live/')) {
-        const liveId = parsed.pathname.split('/live/')[1]?.split('/')[0]?.split('?')[0];
-        if (liveId) {
-          targetUrl = `https://www.youtube.com/watch?v=${liveId}`;
-        }
-      } else if (parsed.pathname.includes('/embed/')) {
-        const embedId = parsed.pathname.split('/embed/')[1]?.split('/')[0]?.split('?')[0];
-        if (embedId) {
-          targetUrl = `https://www.youtube.com/watch?v=${embedId}`;
-        }
-      }
-    } else if (host.includes('instagram.com')) {
-      // Strip tracking params like ?igsh=...
-      parsed.search = '';
-      targetUrl = parsed.toString();
-    }
-  } catch {}
-
+  const targetUrl = cleanTargetUrl(rawUrl);
   const filename = `${rawTitle.replace(/[/\\?%*:|"<>]/g, '_')}${compress ? '_compact' : ''}.mp4`;
   streamMediaDownload(targetUrl, filename, res, compress);
 });
@@ -138,7 +97,8 @@ apiRouter.post('/links/inspect', async (req: Request, res: Response): Promise<vo
   }
 
   try {
-    const result = await inspectUrl(parsedBody.data.url, req.hostname);
+    const cleanUrl = cleanTargetUrl(parsedBody.data.url);
+    const result = await inspectUrl(cleanUrl, req.hostname);
     const validatedResponse = LinkInspectionResponseSchema.parse(result);
     res.json(validatedResponse);
   } catch (err: any) {

@@ -32,6 +32,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
   const [downloadUrl, setDownloadUrl] = useState('');
   const [downloadFilename, setDownloadFilename] = useState('');
   const [copiedToast, setCopiedToast] = useState(false);
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Global paste handler: user can simply press Ctrl+V anywhere on screen
@@ -58,6 +59,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
 
     setUrl(cleanUrl);
     setDownloadedTitle('');
+    setIsAuthRequired(false);
     setStatus('analyzing');
     setStatusMessage('Inspecting link and resolving media stream...');
 
@@ -72,6 +74,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
     inspectLink(cleanUrl)
       .then((res: LinkInspectionResult) => {
         if (res.status === 'direct_download_available') {
+          setIsAuthRequired(false);
           const title = res.title || 'video';
           setDownloadedTitle(title);
           let cleanName = title.replace(/[/\\?%*:|"<>]/g, '_').trim();
@@ -99,20 +102,24 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
             setStatusMessage(compressVideo ? 'Compressed video ready!' : 'Video ready!');
           }, 1200);
         } else if (res.status === 'permission_required') {
+          setIsAuthRequired(true);
           setStatus('error');
           setStatusMessage(
             res.message ||
-              'Authentication required. Instagram stories and private content require login cookies. Add your cookies in Settings.'
+              'Authentication required. This media requires login cookies to access. Add cookies in Settings or close your browser.'
           );
         } else if (res.status === 'official_action_available') {
+          setIsAuthRequired(false);
           setStatus('error');
           setStatusMessage(res.message || 'Direct video downloading is not permitted by this platform.');
         } else {
+          setIsAuthRequired(false);
           setStatus('error');
           setStatusMessage(res.message || 'Could not find a downloadable video stream on this page.');
         }
       })
       .catch((err) => {
+        setIsAuthRequired(false);
         setStatus('error');
         setStatusMessage(err?.message || 'Inspection failed. Please verify that the backend API is running.');
       });
@@ -181,6 +188,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
 
   const handleReset = () => {
     setUrl('');
+    setIsAuthRequired(false);
     setStatus('idle');
     setStatusMessage('');
     setDownloadedTitle('');
@@ -480,7 +488,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
                 marginBottom: 8,
               }}
             >
-              {/cookie|auth|login/i.test(statusMessage) ? 'Authentication Required' : 'Could Not Download'}
+              {isAuthRequired ? 'Authentication Required' : 'Could Not Download'}
             </h3>
             <p
               style={{
@@ -495,7 +503,7 @@ export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings
             </p>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {onOpenSettings && /cookie|auth|login/i.test(statusMessage) && (
+              {onOpenSettings && isAuthRequired && (
                 <button
                   type="button"
                   onClick={onOpenSettings}

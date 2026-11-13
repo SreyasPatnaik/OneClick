@@ -28,6 +28,59 @@ export interface ExtractionResult {
 }
 
 /**
+ * Clean and normalize target URLs for reliable extraction (YouTube, Instagram, etc.)
+ */
+export function cleanTargetUrl(rawUrl: string): string {
+  let targetUrl = (rawUrl || '').trim();
+  if (!targetUrl) return targetUrl;
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = `https://${targetUrl}`;
+  }
+
+  try {
+    const parsed = new URL(targetUrl);
+    const host = parsed.hostname.toLowerCase();
+
+    // YouTube: normalize shorts, youtu.be, live, embed, and strip playlists/tracking
+    if (host.includes('youtu.be')) {
+      const vidId = parsed.pathname.slice(1).split('/')[0]?.split('?')[0];
+      if (vidId) {
+        return `https://www.youtube.com/watch?v=${vidId}`;
+      }
+    } else if (host.includes('youtube.com')) {
+      const v = parsed.searchParams.get('v');
+      if (v) {
+        return `https://www.youtube.com/watch?v=${v}`;
+      }
+      if (parsed.pathname.includes('/shorts/')) {
+        const shortId = parsed.pathname.split('/shorts/')[1]?.split('/')[0]?.split('?')[0];
+        if (shortId) {
+          return `https://www.youtube.com/watch?v=${shortId}`;
+        }
+      }
+      if (parsed.pathname.includes('/live/')) {
+        const liveId = parsed.pathname.split('/live/')[1]?.split('/')[0]?.split('?')[0];
+        if (liveId) {
+          return `https://www.youtube.com/watch?v=${liveId}`;
+        }
+      }
+      if (parsed.pathname.includes('/embed/')) {
+        const embedId = parsed.pathname.split('/embed/')[1]?.split('/')[0]?.split('?')[0];
+        if (embedId) {
+          return `https://www.youtube.com/watch?v=${embedId}`;
+        }
+      }
+    } else if (host.includes('instagram.com')) {
+      // Strip tracking query params like ?igsh=..., ?utm_source=...
+      parsed.search = '';
+      return parsed.toString();
+    }
+  } catch {}
+
+  return targetUrl;
+}
+
+/**
  * Locate yt-dlp binary path
  */
 export function getYtDlpPath(): string | null {
@@ -271,12 +324,21 @@ export function getAvailableBrowser(): string | null {
 /**
  * Extract rich metadata and direct stream info from any URL.
  */
-export async function extractMediaMetadata(url: string): Promise<ExtractionResult> {
+export async function extractMediaMetadata(rawUrl: string): Promise<ExtractionResult> {
+  const url = cleanTargetUrl(rawUrl);
+
   // Strategy 1: Try native yt-dlp (with cookies.txt if available)
   const result = await runYtDlpExtraction(url, false);
   if (result.media) return result;
 
-  // Strategy 1b: If auth required and no cookies.txt, auto-try browser cookies (Chrome, Edge, etc.)
+  // Strategy 1b: For YouTube, retry with default extractor args if android/ios client didn't match
+  if (/youtube\.com|youtu\.be/i.test(url) && !result.media && !result.requiresAuth) {
+    console.log('[Extractor] Retrying YouTube extraction with default client for:', url);
+    const retryYt = await runYtDlpExtraction(url, false, undefined, true);
+    if (retryYt.media) return retryYt;
+  }
+
+  // Strategy 1c: If auth required and no cookies.txt, auto-try browser cookies (Chrome, Edge, etc.)
   if (result.requiresAuth && !getCookiesPath()) {
     const browsers = getAvailableBrowsers();
     for (const browser of browsers) {
@@ -436,9 +498,14 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
 }
 
 /**
- * Run yt-dlp extraction with optional generic extractor mode and browser cookie support
+ * Run yt-dlp extraction with optional generic extractor mode, browser cookie support, and optional extractor args
  */
-function runYtDlpExtraction(url: string, useGeneric: boolean, browserCookies?: string): Promise<ExtractionResult> {
+function runYtDlpExtraction(
+  url: string,
+  useGeneric: boolean,
+  browserCookies?: string,
+  skipExtractorArgs = false
+): Promise<ExtractionResult> {
   const ytDlpPath = getYtDlpPath();
   if (!ytDlpPath) {
     console.warn('[Extractor] yt-dlp binary not found');
@@ -455,9 +522,12 @@ function runYtDlpExtraction(url: string, useGeneric: boolean, browserCookies?: s
     '--playlist-items', '1',
     '--skip-download',
     '--no-check-certificates',
-    '--extractor-args', 'youtube:player_client=android,ios,mweb,web',
     '--js-runtimes', 'node',
   ];
+
+  if (!skipExtractorArgs && /youtube\.com|youtu\.be/i.test(url)) {
+    args.push('--extractor-args', 'youtube:player_client=android,ios');
+  }
 
   if (browserCookies) {
     console.log(`[Extractor] Using browser cookies from: ${browserCookies}`);
@@ -594,7 +664,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     ? 'bestvideo[height<=480]+bestaudio/bestvideo[width<=480]+bestaudio/best[height<=480]/best[width<=480]/best'
     : 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best';
 
-  let currentUrl = url;
+  let currentUrl = cleanTargetUrl(url);
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tempOutputFile = path.join(os.tmpdir(), `${tempPrefix}_%(title).70B.%(ext)s`);
 
@@ -608,9 +678,12 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--no-playlist',
       '--playlist-items', '1',
       '--no-check-certificates',
-      '--extractor-args', 'youtube:player_client=android,ios,mweb,web',
       '--js-runtimes', 'node',
     ];
+
+    if (/youtube\.com|youtu\.be/i.test(currentUrl)) {
+      args.push('--extractor-args', 'youtube:player_client=android,ios');
+    }
 
     if (useBrowserCookies) {
       args.push('--cookies-from-browser', useBrowserCookies);

@@ -5,7 +5,7 @@ import {
   PLATFORM_CONFIGS,
 } from '@clipnest/shared';
 import { assertSafeUrlForFetch, SSRFSecurityError } from './ssrf-shield.js';
-import { extractMediaMetadata } from './extractor.js';
+import { extractMediaMetadata, cleanTargetUrl } from './extractor.js';
 
 const DEFAULT_TIMEOUT_MS = 6000;
 
@@ -22,7 +22,8 @@ function buildDownloadUrl(targetUrl: string, title: string, reqHost?: string): s
   return `http://${host}:4000/api/v1/download/stream?url=${encodeURIComponent(targetUrl)}&title=${encodeURIComponent(title)}`;
 }
 
-export async function inspectUrl(targetUrl: string, reqHost?: string): Promise<LinkInspectionResult> {
+export async function inspectUrl(rawTargetUrl: string, reqHost?: string): Promise<LinkInspectionResult> {
+  const targetUrl = cleanTargetUrl(rawTargetUrl);
   // First run local heuristics & platform rules
   const localResult = inspectUrlLocally(targetUrl);
 
