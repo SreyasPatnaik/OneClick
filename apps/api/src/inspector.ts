@@ -2,6 +2,7 @@ import {
   LinkInspectionResult,
   inspectUrlLocally,
   extractFilenameFromUrl,
+  PLATFORM_CONFIGS,
 } from '@clipnest/shared';
 import { assertSafeUrlForFetch, SSRFSecurityError } from './ssrf-shield.js';
 import { extractMediaMetadata } from './extractor.js';
@@ -37,8 +38,9 @@ export async function inspectUrl(targetUrl: string, reqHost?: string): Promise<L
   // yt-dlp supports 1700+ sites natively AND has a generic extractor
   // that scrapes <video>, <audio>, og:video tags from any webpage.
   try {
-    const extracted = await extractMediaMetadata(targetUrl);
-    if (extracted) {
+    const extractionResult = await extractMediaMetadata(targetUrl);
+    if (extractionResult.media) {
+      const extracted = extractionResult.media;
       return {
         url: targetUrl,
         platform: localResult.platform,
@@ -54,6 +56,25 @@ export async function inspectUrl(targetUrl: string, reqHost?: string): Promise<L
           extracted.title,
           reqHost
         ),
+        inspectionTimestamp: new Date().toISOString(),
+      };
+    } else if (extractionResult.requiresAuth) {
+      const authMessage =
+        localResult.platform === 'instagram'
+          ? 'Instagram Stories and protected posts require login cookies. Instagram does not permit unauthenticated access to stories. Add cookies in Settings to download.'
+          : (extractionResult.errorMessage || 'This media requires login, cookies, or verification to access.');
+
+      return {
+        url: targetUrl,
+        platform: localResult.platform,
+        status: 'permission_required',
+        displayHost: localResult.displayHost,
+        title: localResult.title || 'Authentication Required',
+        mediaType: 'text/html',
+        sizeBytes: null,
+        availableActions: ['open_official', 'copy_url'],
+        message: authMessage,
+        officialGuidance: localResult.officialGuidance,
         inspectionTimestamp: new Date().toISOString(),
       };
     }
@@ -148,7 +169,20 @@ export async function inspectUrl(targetUrl: string, reqHost?: string): Promise<L
       };
     }
 
-    // Universal fallback for web pages: enable direct streaming download via API
+    // If this is a known platform (YouTube, Instagram, Facebook, TikTok) that failed extraction,
+    // honor the platform's guidance instead of pretending it's directly downloadable.
+    if (localResult.platform in PLATFORM_CONFIGS) {
+      if (localResult.platform === 'instagram') {
+        return {
+          ...localResult,
+          status: 'permission_required',
+          message: 'Instagram stories and protected posts require authentication. Provide cookies.txt in Settings to download.',
+        };
+      }
+      return localResult;
+    }
+
+    // Universal fallback for general web pages: enable direct streaming download via API
     return {
       url: targetUrl,
       platform: localResult.platform,

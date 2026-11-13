@@ -11,11 +11,18 @@ import {
   Sparkles,
   ArrowRight,
   RotateCcw,
+  ExternalLink,
+  Shield,
+  KeyRound,
 } from 'lucide-react';
 import { inspectLink } from '../services/api-client.js';
 import { LinkInspectionResult } from '@clipnest/shared';
 
-export const QuickDownloader: React.FC = () => {
+interface QuickDownloaderProps {
+  onOpenSettings?: () => void;
+}
+
+export const QuickDownloader: React.FC<QuickDownloaderProps> = ({ onOpenSettings }) => {
   const [url, setUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [compressVideo, setCompressVideo] = useState(false);
@@ -51,50 +58,63 @@ export const QuickDownloader: React.FC = () => {
 
     setUrl(cleanUrl);
     setDownloadedTitle('');
+    setStatus('analyzing');
+    setStatusMessage('Inspecting link and resolving media stream...');
 
-    // Dynamically build download stream URL immediately
     const rawApi = (import.meta.env.VITE_API_URL as string) || '';
-    let finalDownloadUrl = `/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
-    if (rawApi) {
-      finalDownloadUrl = `${rawApi.replace(/\/$/, '')}${finalDownloadUrl}`;
-    } else if (window.location.protocol === 'https:' || window.location.port === '5173') {
-      finalDownloadUrl = `/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
-    } else {
-      finalDownloadUrl = `http://${window.location.hostname}:4000/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}`;
-    }
+    const host = window.location.hostname || 'localhost';
+    const apiBase = rawApi
+      ? rawApi.replace(/\/$/, '')
+      : window.location.protocol === 'https:' || window.location.port === '5173'
+        ? ''
+        : `http://${host}:4000`;
 
-    if (compressVideo) {
-      finalDownloadUrl += '&compress=true';
-    }
-
-    setDownloadUrl(finalDownloadUrl);
-    setDownloadFilename('video.mp4');
-    setStatus('downloading');
-    setStatusMessage(
-      compressVideo
-        ? 'Fast download starting (480p compact)...'
-        : 'Downloading 1080p Full HD stream...'
-    );
-
-    // Immediately trigger browser download — zero delay!
-    triggerBrowserDownload(finalDownloadUrl, 'video.mp4');
-
-    // In parallel, fetch inspection metadata for title without blocking download start
     inspectLink(cleanUrl)
       .then((res: LinkInspectionResult) => {
-        if (res.title) {
-          setDownloadedTitle(res.title);
-          let cleanName = res.title.replace(/[/\\?%*:|"<>]/g, '_').trim();
+        if (res.status === 'direct_download_available') {
+          const title = res.title || 'video';
+          setDownloadedTitle(title);
+          let cleanName = title.replace(/[/\\?%*:|"<>]/g, '_').trim();
           if (compressVideo && !cleanName.includes('compressed')) cleanName += '_compressed';
-          if (!/\.(mp4|webm|mkv|mov|m4v)$/i.test(cleanName)) cleanName += '.mp4';
+          if (!/\.(mp4|webm|mkv|mov|m4v|mp3|m4a)$/i.test(cleanName)) cleanName += '.mp4';
           setDownloadFilename(cleanName);
+
+          let finalDownloadUrl = `${apiBase}/api/v1/download/stream?url=${encodeURIComponent(cleanUrl)}&title=${encodeURIComponent(title)}`;
+          if (compressVideo) {
+            finalDownloadUrl += '&compress=true';
+          }
+
+          setDownloadUrl(finalDownloadUrl);
+          setStatus('downloading');
+          setStatusMessage(
+            compressVideo
+              ? 'Fast download starting (480p compact)...'
+              : 'Downloading 1080p Full HD stream...'
+          );
+
+          triggerBrowserDownload(finalDownloadUrl, cleanName);
+
+          setTimeout(() => {
+            setStatus('completed');
+            setStatusMessage(compressVideo ? 'Compressed video ready!' : 'Video ready!');
+          }, 1200);
+        } else if (res.status === 'permission_required') {
+          setStatus('error');
+          setStatusMessage(
+            res.message ||
+              'Authentication required. Instagram stories and private content require login cookies. Add your cookies in Settings.'
+          );
+        } else if (res.status === 'official_action_available') {
+          setStatus('error');
+          setStatusMessage(res.message || 'Direct video downloading is not permitted by this platform.');
+        } else {
+          setStatus('error');
+          setStatusMessage(res.message || 'Could not find a downloadable video stream on this page.');
         }
-        setStatus('completed');
-        setStatusMessage(compressVideo ? 'Compressed video ready!' : 'Video ready!');
       })
-      .catch(() => {
-        setStatus('completed');
-        setStatusMessage('Video download in progress!');
+      .catch((err) => {
+        setStatus('error');
+        setStatusMessage(err?.message || 'Inspection failed. Please verify that the backend API is running.');
       });
   };
 
@@ -460,7 +480,7 @@ export const QuickDownloader: React.FC = () => {
                 marginBottom: 8,
               }}
             >
-              Could Not Download
+              {/cookie|auth|login/i.test(statusMessage) ? 'Authentication Required' : 'Could Not Download'}
             </h3>
             <p
               style={{
@@ -474,14 +494,53 @@ export const QuickDownloader: React.FC = () => {
               {statusMessage}
             </p>
 
-            <button
-              onClick={handleReset}
-              className="btn-secondary"
-              style={{ padding: '9px 20px', fontSize: '0.85rem' }}
-            >
-              <RotateCcw size={15} />
-              <span>Try Another Link</span>
-            </button>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {onOpenSettings && /cookie|auth|login/i.test(statusMessage) && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="btn-primary"
+                  style={{
+                    padding: '9px 18px',
+                    fontSize: '0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <KeyRound size={15} />
+                  <span>Add Cookies in Settings</span>
+                </button>
+              )}
+              {url && (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary"
+                  style={{
+                    padding: '9px 18px',
+                    fontSize: '0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    textDecoration: 'none',
+                  }}
+                >
+                  <ExternalLink size={15} />
+                  <span>Open Link</span>
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={handleReset}
+                className="btn-secondary"
+                style={{ padding: '9px 20px', fontSize: '0.85rem' }}
+              >
+                <RotateCcw size={15} />
+                <span>Try Another Link</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

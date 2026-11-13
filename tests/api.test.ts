@@ -75,4 +75,25 @@ describe('Backend API Endpoints (/api/v1)', () => {
     const data = await res.json();
     expect(data.error.code).toBe('SSRF_ATTEMPT_BLOCKED');
   });
+
+  it('GET /cookies/status returns cookies state', async () => {
+    const res = await fetch(`${baseUrl}/cookies/status`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(typeof data.hasCookies).toBe('boolean');
+  });
+
+  it('POST /links/inspect on unauthenticated Instagram story returns permission_required', async () => {
+    const res = await fetch(`${baseUrl}/links/inspect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://www.instagram.com/stories/instagram/1234567890/' }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.platform).toBe('instagram');
+    expect(data.status).toBe('permission_required');
+    expect(data.message).toContain('cookies');
+  });
 });

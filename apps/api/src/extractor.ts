@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +19,12 @@ export interface ExtractedMedia {
   directUrl?: string;
   filesize?: number;
   extractor: string;
+}
+
+export interface ExtractionResult {
+  media: ExtractedMedia | null;
+  requiresAuth?: boolean;
+  errorMessage?: string;
 }
 
 /**
@@ -45,10 +51,16 @@ export function getYtDlpPath(): string | null {
   return 'yt-dlp';
 }
 
+let cachedFfmpegDir: string | null | undefined = undefined;
+
 /**
- * Locate ffmpeg binary directory
+ * Locate ffmpeg binary directory dynamically
  */
 export function getFfmpegDir(): string | null {
+  if (cachedFfmpegDir !== undefined) {
+    return cachedFfmpegDir;
+  }
+
   const candidateDirs = [
     '/usr/bin',
     '/usr/local/bin',
@@ -61,8 +73,75 @@ export function getFfmpegDir(): string | null {
   for (const dir of candidateDirs) {
     const ffmpegPath = path.join(dir, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
     if (fs.existsSync(ffmpegPath)) {
+      cachedFfmpegDir = dir;
       return dir;
     }
+  }
+
+  // Probe system PATH via where.exe / which
+  try {
+    const cmd = process.platform === 'win32' ? 'where.exe ffmpeg' : 'which ffmpeg';
+    const output = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 }).trim();
+    const firstLine = output.split(/\r?\n/)[0]?.trim();
+    if (firstLine && fs.existsSync(firstLine)) {
+      const dir = path.dirname(firstLine);
+      cachedFfmpegDir = dir;
+      return dir;
+    }
+  } catch {}
+
+  // Check common Windows WinGet / Chocolatey / Scoop installation locations
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    if (localAppData) {
+      const wingetDir = path.join(localAppData, 'Microsoft', 'WinGet', 'Packages');
+      if (fs.existsSync(wingetDir)) {
+        try {
+          const pkgs = fs.readdirSync(wingetDir).filter((d) => d.toLowerCase().includes('ffmpeg'));
+          for (const pkg of pkgs) {
+            const pkgPath = path.join(wingetDir, pkg);
+            const subdirs = fs.readdirSync(pkgPath);
+            for (const sub of subdirs) {
+              const binPath = path.join(pkgPath, sub, 'bin');
+              if (fs.existsSync(path.join(binPath, 'ffmpeg.exe'))) {
+                cachedFfmpegDir = binPath;
+                return binPath;
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  cachedFfmpegDir = null;
+  return null;
+}
+
+/**
+ * Locate cookies.txt if available
+ */
+export function getCookiesPath(): string | null {
+  const candidatePaths = [
+    process.env.COOKIES_PATH,
+    path.resolve(process.cwd(), 'cookies.txt'),
+    path.resolve(process.cwd(), 'apps/api/cookies.txt'),
+    path.resolve(process.cwd(), 'apps/desktop/cookies.txt'),
+    path.resolve(__dirname, '../cookies.txt'),
+    path.resolve(__dirname, '../../cookies.txt'),
+    path.join(os.homedir(), '.clipnest', 'cookies.txt'),
+    path.join(os.homedir(), 'Downloads', 'cookies.txt'),
+  ].filter(Boolean) as string[];
+
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const stat = fs.statSync(p);
+        if (stat.isFile() && stat.size > 0) {
+          return p;
+        }
+      }
+    } catch {}
   }
 
   return null;
@@ -70,34 +149,42 @@ export function getFfmpegDir(): string | null {
 
 /**
  * Extract rich metadata and direct stream info from any URL.
- * Strategy:
- * 1. Try native yt-dlp (1700+ platforms)
- * 2. Retry with yt-dlp generic extractor
- * 3. Scrape webpage HTML for embedded video/audio/m3u8/mp4 streams (e.g. Kuku FM, Story TV, Chrome pages)
- * 4. Resilient fallback with webpage title so download stream can attempt capture
  */
-export async function extractMediaMetadata(url: string): Promise<ExtractedMedia | null> {
+export async function extractMediaMetadata(url: string): Promise<ExtractionResult> {
   // Strategy 1: Try native yt-dlp
   const result = await runYtDlpExtraction(url, false);
-  if (result) return result;
+  if (result.media) return result;
 
-  // Strategy 2: Retry with force-generic-extractor for unknown sites
-  console.log('[Extractor] Retrying with generic extractor for:', url);
-  const genericResult = await runYtDlpExtraction(url, true);
-  if (genericResult) return genericResult;
+  // If failed due to authentication/login required, return immediately with reason
+  if (result.requiresAuth) {
+    return result;
+  }
 
-  // Strategy 3: HTML media inspection (for Kuku FM, Story TV, generic web pages)
-  console.log('[Extractor] Attempting direct HTML media scraping for:', url);
-  return scrapeHtmlMedia(url);
+  // Strategy 2: For unknown sites, retry with generic extractor
+  const isKnownPlatform = /youtube\.com|youtu\.be|instagram\.com|tiktok\.com|twitter\.com|x\.com|facebook\.com|fb\.watch|reddit\.com|vimeo\.com/i.test(url);
+  if (!isKnownPlatform) {
+    console.log('[Extractor] Retrying with generic extractor for:', url);
+    const genericResult = await runYtDlpExtraction(url, true);
+    if (genericResult.media) return genericResult;
+
+    // Strategy 3: HTML media inspection (for generic web pages)
+    console.log('[Extractor] Attempting direct HTML media scraping for:', url);
+    const scraped = await scrapeHtmlMedia(url);
+    if (scraped) {
+      return { media: scraped };
+    }
+  }
+
+  return result;
 }
 
 /**
- * Direct HTML media scraper: looks for <video>, <audio>, <source>, og:video, og:audio, and .m3u8/.mp4 links
+ * Direct HTML media scraper: looks for real video/audio streams
  */
 async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(url, {
       signal: controller.signal,
@@ -123,7 +210,6 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
     } else if (titleTagMatch && titleTagMatch[1]) {
       title = titleTagMatch[1].trim();
     }
-    // Clean HTML entities
     title = title
       .replace(/&amp;/g, '&')
       .replace(/&#39;/g, "'")
@@ -133,29 +219,17 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
       .replace(/[/\\?%*:|"<>]/g, '_')
       .trim();
 
-    if (!title) {
-      try {
-        title = new URL(url).hostname;
-      } catch {
-        title = 'Web Media';
-      }
+    if (!title || /^(login|sign in|welcome to instagram|log in)/i.test(title)) {
+      return null;
     }
 
     const isAdOrPromoUrl = (u: string) => {
       if (/ft_assets|ft_video|fm_ft_video|free_trial|_promo|_ad\b|\/ads\/|advertisement|banner_video|trailer_video|coin_pack|special_offer/i.test(u)) {
         return true;
       }
-      const idx = unescapedHtml.indexOf(u);
-      if (idx !== -1) {
-        const surrounding = unescapedHtml.slice(Math.max(0, idx - 150), idx + 50);
-        if (/marketingPageMetadata|coinPack|ftVideoUrl|ftVideoHlsUrl|adUrl|adVideoUrl|special_offer/i.test(surrounding)) {
-          return true;
-        }
-      }
       return false;
     };
 
-    // Collect all media stream candidates from HTML and JSON
     const mediaCandidates: { url: string; isVideo: boolean; priority: number }[] = [];
 
     const addCandidate = (rawUrl: string | undefined, defaultIsVideo: boolean, basePriority: number) => {
@@ -176,26 +250,11 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
       let score = basePriority;
       if (isAd) {
         score -= 500;
-      } else {
-        if (/episode/i.test(target)) score += 50;
-        if (target.includes('/audio/')) score += 40;
       }
 
       mediaCandidates.push({ url: target, isVideo, priority: score });
     };
 
-    // 1. Direct Content Object in Kuku FM / React JSON (Highest Priority)
-    const contentBlockRegex = /"content"\s*:\s*\{([^}]+)\}/g;
-    let contentMatch;
-    while ((contentMatch = contentBlockRegex.exec(unescapedHtml)) !== null) {
-      const block = contentMatch[1];
-      const urlMatch = block.match(/"(?:premiumAudioUrl|hlsUrl|audioUrl|videoUrl|url)"\s*:\s*"(https?:\/\/[^"\s]+\.(?:m3u8|mp4|mp3|m4a|aac)[^"\s]*)"/i);
-      if (urlMatch && urlMatch[1]) {
-        addCandidate(urlMatch[1], /video/i.test(urlMatch[0]), 300);
-      }
-    }
-
-    // 2. Tag based
     const ogVideoMatch = html.match(/<meta\s+property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i);
     const ogAudioMatch = html.match(/<meta\s+property=["']og:audio(?::secure_url)?["']\s+content=["']([^"']+)["']/i);
     const videoSrcMatch = html.match(/<video[^>]+src=["']([^"']+)["']/i);
@@ -208,25 +267,22 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
     addCandidate(ogAudioMatch?.[1], false, 20);
     addCandidate(audioSrcMatch?.[1], false, 20);
 
-    // 3. Scan all embedded stream URLs in page
     const allStreamsRegex = /https?:\/\/[^"'\s<>]+\.(?:m3u8|mp4|webm|mp3|m4a|aac)(?:\?[^"'\s<>]*)?/gi;
     const allStreamMatches = unescapedHtml.match(allStreamsRegex) || [];
     for (const streamUrl of allStreamMatches) {
       addCandidate(streamUrl, !/\.(?:mp3|m4a|aac)(?:\?|$)/i.test(streamUrl), 20);
     }
 
-    // Sort candidates by priority descending
     mediaCandidates.sort((a, b) => b.priority - a.priority);
 
-    let mediaUrl: string | undefined;
-    let ext = 'mp4';
-
-    if (mediaCandidates.length > 0) {
-      const best = mediaCandidates[0];
-      mediaUrl = best.url;
-      ext = best.isVideo ? 'mp4' : 'mp3';
-      console.log(`[Extractor Scraper] Selected stream (priority ${best.priority}):`, mediaUrl);
+    // CRITICAL FIX: If no media candidate was found, DO NOT fabricate a video result!
+    if (mediaCandidates.length === 0) {
+      return null;
     }
+
+    const best = mediaCandidates[0];
+    const mediaUrl = best.url;
+    const ext = best.isVideo ? 'mp4' : 'mp3';
 
     if (!/\.(mp4|webm|mkv|mov|m4v|mp3|m4a)$/i.test(title)) {
       title = `${title}.${ext}`;
@@ -236,8 +292,8 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
       id: 'web_' + Date.now(),
       title,
       ext,
-      directUrl: mediaUrl || url,
-      extractor: mediaUrl ? 'html_media_scraper' : 'universal_web_extractor',
+      directUrl: mediaUrl,
+      extractor: 'html_media_scraper',
     };
   } catch (err) {
     console.warn('[Extractor] HTML scrape error:', err);
@@ -248,14 +304,16 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
 /**
  * Run yt-dlp extraction with optional generic extractor mode
  */
-function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<ExtractedMedia | null> {
+function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<ExtractionResult> {
   const ytDlpPath = getYtDlpPath();
   if (!ytDlpPath) {
     console.warn('[Extractor] yt-dlp binary not found');
-    return Promise.resolve(null);
+    return Promise.resolve({ media: null, errorMessage: 'Downloader binary not found' });
   }
 
   const ffmpegDir = getFfmpegDir();
+  const cookiesPath = getCookiesPath();
+
   const args = [
     '--dump-single-json',
     '--no-warnings',
@@ -263,11 +321,14 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     '--playlist-items', '1',
     '--skip-download',
     '--no-check-certificates',
-    '--extractor-args', 'youtube:player_client=visionos,android,web',
+    '--extractor-args', 'youtube:player_client=android,ios,mweb,web',
     '--js-runtimes', 'node',
-    '--user-agent',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
   ];
+
+  if (cookiesPath) {
+    console.log('[Extractor] Using cookies from:', cookiesPath);
+    args.push('--cookies', cookiesPath);
+  }
 
   if (useGeneric) {
     args.push('--force-generic-extractor');
@@ -290,7 +351,7 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
       console.warn('[Extractor] Extraction timed out after 30s');
-      resolve(null);
+      resolve({ media: null, errorMessage: 'Extraction timed out after 30 seconds' });
     }, 30000);
 
     child.stdout.on('data', (chunk) => {
@@ -304,13 +365,31 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
     child.on('error', (err) => {
       clearTimeout(timeout);
       console.error('[Extractor] Failed to spawn yt-dlp:', err);
-      resolve(null);
+      resolve({ media: null, errorMessage: err.message });
     });
 
     child.on('close', (code) => {
       clearTimeout(timeout);
+      const isAuthError =
+        /login|log in|authentication|empty media response|confirm you're not a bot|confirm your age|private video|members-only/i.test(
+          stderrData
+        );
+
+      let cleanError = '';
+      const errorLines = stderrData
+        .split('\n')
+        .filter((l) => l.includes('ERROR:'))
+        .map((l) => l.replace(/^ERROR:\s*/, '').trim());
+      if (errorLines.length > 0) {
+        cleanError = errorLines[0];
+      }
+
       if (code !== 0 || !stdoutData.trim()) {
-        resolve(null);
+        resolve({
+          media: null,
+          requiresAuth: isAuthError,
+          errorMessage: cleanError || stderrData.trim() || 'Extraction failed',
+        });
         return;
       }
 
@@ -345,10 +424,10 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
           extractor: data.extractor || 'generic',
         };
 
-        resolve(extracted);
+        resolve({ media: extracted });
       } catch (parseErr) {
         console.error('[Extractor] Error parsing yt-dlp JSON:', parseErr);
-        resolve(null);
+        resolve({ media: null, errorMessage: 'Error parsing media stream data' });
       }
     });
   });
@@ -356,11 +435,6 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extracted
 
 /**
  * Stream downloaded media directly to HTTP response.
- * Strategy:
- * 1. Build yt-dlp command with flexible format selection (video or audio)
- * 2. Attempt normal download; if that fails, retry with --force-generic-extractor
- * 3. Dynamically discover output file in temp directory (regardless of whether it ended up as .mp4, .m4a, .webm, etc.)
- * 4. Pipe to response with appropriate Content-Disposition and Content-Type
  */
 export function streamMediaDownload(url: string, filename: string, res: Response, compress = false) {
   const ytDlpPath = getYtDlpPath();
@@ -370,15 +444,17 @@ export function streamMediaDownload(url: string, filename: string, res: Response
   }
 
   const ffmpegDir = getFfmpegDir();
+  const cookiesPath = getCookiesPath();
+
   let safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '_').trim();
   if (!/\.(mp4|webm|mkv|mov|m4v|mp3|m4a)$/i.test(safeFilename)) {
     safeFilename += '.mp4';
   }
 
-  // Format selection: auto download in 1080p Full HD (both horizontal & vertical), falling back to highest available
+  // Format selection: prioritize clean MP4 muxing with progressive fallback
   const formatSelection = compress
-    ? 'bestvideo[height<=480]+bestaudio/bestvideo[width<=480]+bestaudio/best[height<=480]/best'
-    : 'bestvideo[height<=1080]+bestaudio/bestvideo[width<=1080]+bestaudio/best[height<=1080]/best[width<=1080]/bestvideo+bestaudio/best';
+    ? 'bestvideo[height<=480]+bestaudio/bestvideo[width<=480]+bestaudio/best[height<=480]/best[width<=480]/best'
+    : 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best';
 
   let currentUrl = url;
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -394,11 +470,14 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--no-playlist',
       '--playlist-items', '1',
       '--no-check-certificates',
-      '--extractor-args', 'youtube:player_client=visionos,android,web',
+      '--extractor-args', 'youtube:player_client=android,ios,mweb,web',
       '--js-runtimes', 'node',
-      '--user-agent',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     ];
+
+    if (cookiesPath) {
+      args.push('--cookies', cookiesPath);
+    }
+
     if (useGeneric) {
       args.push('--force-generic-extractor');
     }
@@ -415,9 +494,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       for (const f of files) {
         fs.unlink(path.join(os.tmpdir(), f), () => {});
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const attemptDownload = (useGeneric: boolean) => {
@@ -440,58 +517,41 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     });
 
     child.on('close', (code) => {
-      // Check if any output file was produced
       let actualFile: string | null = null;
       try {
         const matches = fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith(tempPrefix) && !f.endsWith('.part'));
         if (matches.length > 0) {
           actualFile = path.join(os.tmpdir(), matches[0]);
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
 
       if (code !== 0 || !actualFile) {
         console.warn(`[Extractor Stream] yt-dlp exited with code ${code}${useGeneric ? ' (generic)' : ''}`);
 
-        // If first attempt failed and generic not tried yet, retry ONLY for unknown/non-platform sites
+        const isAuthRequired = /login|log in|authentication|empty media response|confirm you're not a bot|confirm your age|private video/i.test(
+          fullStderr
+        );
+
+        if (isAuthRequired && !res.headersSent) {
+          cleanupTempFiles();
+          if (/instagram/i.test(currentUrl)) {
+            res.status(401).end('Instagram authentication required. Instagram stories and protected content require login cookies. Please provide cookies in Settings.');
+          } else {
+            res.status(401).end('Authentication required. This video requires login, cookies, or verification to access.');
+          }
+          return;
+        }
+
         const isKnownPlatform = /youtube\.com|youtu\.be|instagram\.com|tiktok\.com|twitter\.com|x\.com|facebook\.com|fb\.watch|reddit\.com|vimeo\.com/i.test(currentUrl);
         if (!useGeneric && !isKnownPlatform && !res.headersSent) {
-          console.log('[Extractor Stream] Retrying with generic extractor...');
           cleanupTempFiles();
           attemptDownload(true);
           return;
         }
 
-        // If generic extractor also failed, scrape webpage HTML for embedded media streams (m3u8, mp4, etc.)
-        if (useGeneric && !res.headersSent && (currentUrl.startsWith('http://') || currentUrl.startsWith('https://'))) {
-          console.log('[Extractor Stream] Attempting HTML media scrape for embedded stream...');
-          scrapeHtmlMedia(currentUrl)
-            .then((scraped) => {
-              if (scraped && scraped.directUrl && scraped.directUrl !== currentUrl) {
-                console.log('[Extractor Stream] Found embedded stream via HTML scraper:', scraped.directUrl);
-                cleanupTempFiles();
-                currentUrl = scraped.directUrl;
-                attemptDownload(false);
-              } else if (!res.headersSent) {
-                const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
-                res.status(500).end(errorLine || 'Download failed — no extractable media stream found on this page.');
-                cleanupTempFiles();
-              }
-            })
-            .catch(() => {
-              if (!res.headersSent) {
-                const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
-                res.status(500).end(errorLine || 'Download failed — no extractable media stream found on this page.');
-                cleanupTempFiles();
-              }
-            });
-          return;
-        }
-
         if (!res.headersSent) {
           const errorLine = fullStderr.split('\n').filter((l) => l.includes('ERROR:')).join(' ').trim();
-          res.status(500).end(errorLine || 'Download failed — no extractable media stream found.');
+          res.status(500).end(errorLine || 'Download failed — stream could not be extracted.');
           cleanupTempFiles();
           return;
         }
@@ -534,13 +594,11 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       });
     });
 
-    // If client disconnects or aborts, kill process and clean up
     res.on('close', () => {
       child.kill('SIGTERM');
       cleanupTempFiles();
     });
   };
 
-  // Start download attempt
   attemptDownload(false);
 }

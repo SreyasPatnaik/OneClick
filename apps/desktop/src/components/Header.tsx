@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Minus, Square, X } from 'lucide-react';
+import { Sparkles, Minus, Square, X, Settings } from 'lucide-react';
 import { API_BASE_URL } from '../services/api-client.js';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onOpenSettings?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
   const isElectron = Boolean(window.electronAPI?.isElectron);
   const [isApiOnline, setIsApiOnline] = useState<boolean | null>(null);
 
@@ -14,7 +18,8 @@ export const Header: React.FC = () => {
         if (mounted) setIsApiOnline(res.ok);
       } catch {
         try {
-          const directRes = await fetch(`http://${window.location.hostname}:4000/api/v1/health`);
+          const host = window.location.hostname || 'localhost';
+          const directRes = await fetch(`http://${host}:4000/api/v1/health`);
           if (mounted) setIsApiOnline(directRes.ok);
         } catch {
           if (mounted) setIsApiOnline(false);
@@ -118,33 +123,55 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* Status Pill */}
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            padding: '4px 9px',
-            borderRadius: 12,
-            background: isApiOnline ? 'rgba(16, 185, 129, 0.14)' : 'rgba(200, 121, 44, 0.14)',
-            color: isApiOnline ? 'var(--accent-emerald)' : 'var(--accent-amber)',
-            border: `1px solid ${isApiOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(200, 121, 44, 0.3)'}`,
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Status Pill */}
           <span
             style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: isApiOnline ? 'var(--accent-emerald)' : 'var(--accent-amber)',
-              boxShadow: isApiOnline ? '0 0 6px var(--accent-emerald)' : 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              padding: '4px 9px',
+              borderRadius: 12,
+              background: isApiOnline ? 'rgba(16, 185, 129, 0.14)' : 'rgba(200, 121, 44, 0.14)',
+              color: isApiOnline ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+              border: `1px solid ${isApiOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(200, 121, 44, 0.3)'}`,
+              whiteSpace: 'nowrap',
             }}
-          />
-          {isApiOnline === null ? 'Connecting...' : isApiOnline ? 'Ready' : 'Local'}
-        </span>
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: isApiOnline ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+                boxShadow: isApiOnline ? '0 0 6px var(--accent-emerald)' : 'none',
+              }}
+            />
+            {isApiOnline === null ? 'Connecting...' : isApiOnline ? 'Ready' : 'Local'}
+          </span>
+
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="btn-secondary"
+              title="Settings & Cookies"
+              style={{
+                padding: '5px 8px',
+                borderRadius: 8,
+                fontSize: '0.75rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <Settings size={14} />
+              <span>Settings</span>
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
