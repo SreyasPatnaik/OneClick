@@ -148,14 +148,85 @@ export function getCookiesPath(): string | null {
 }
 
 /**
+ * Detect which browsers are available on the system for cookie extraction.
+ * Returns the first available browser name that yt-dlp accepts.
+ */
+function detectAvailableBrowser(): string | null {
+  const browsers: { name: string; checks: string[] }[] = [
+    { name: 'edge', checks: ['msedge', 'msedge.exe'] },
+    { name: 'chrome', checks: ['chrome', 'chrome.exe', 'google-chrome'] },
+    { name: 'firefox', checks: ['firefox', 'firefox.exe'] },
+    { name: 'brave', checks: ['brave', 'brave.exe'] },
+    { name: 'opera', checks: ['opera', 'opera.exe'] },
+  ];
+
+  for (const browser of browsers) {
+    for (const bin of browser.checks) {
+      try {
+        const cmd = process.platform === 'win32' ? `where.exe ${bin}` : `which ${bin}`;
+        execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
+        console.log(`[Extractor] Detected browser: ${browser.name}`);
+        return browser.name;
+      } catch {}
+    }
+  }
+
+  // Check Windows registry for Edge (common install path)
+  if (process.platform === 'win32') {
+    const edgePaths = [
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+    for (const p of edgePaths) {
+      if (fs.existsSync(p)) {
+        console.log('[Extractor] Detected Edge via known path');
+        return 'edge';
+      }
+    }
+  }
+
+  return null;
+}
+
+let cachedBrowser: string | null | undefined = undefined;
+
+/**
+ * Get the detected browser (cached after first call)
+ */
+export function getAvailableBrowser(): string | null {
+  if (cachedBrowser !== undefined) return cachedBrowser;
+  cachedBrowser = detectAvailableBrowser();
+  return cachedBrowser;
+}
+
+/**
  * Extract rich metadata and direct stream info from any URL.
  */
 export async function extractMediaMetadata(url: string): Promise<ExtractionResult> {
-  // Strategy 1: Try native yt-dlp
+  // Strategy 1: Try native yt-dlp (with cookies.txt if available)
   const result = await runYtDlpExtraction(url, false);
   if (result.media) return result;
 
-  // If failed due to authentication/login required, return immediately with reason
+  // Strategy 1b: If auth required and no cookies.txt, auto-try browser cookies
+  if (result.requiresAuth && !getCookiesPath()) {
+    const browser = getAvailableBrowser();
+    if (browser) {
+      console.log(`[Extractor] Auth required, auto-trying --cookies-from-browser ${browser}`);
+      const browserResult = await runYtDlpExtraction(url, false, browser);
+      if (browserResult.media) return browserResult;
+      // If browser cookies also fail, fall through with original auth error
+      // but update the message to reflect we tried
+      if (browserResult.requiresAuth) {
+        return {
+          ...browserResult,
+          errorMessage: browserResult.errorMessage || result.errorMessage,
+        };
+      }
+    }
+    return result;
+  }
+
+  // If failed due to authentication/login required (with cookies.txt present), return immediately
   if (result.requiresAuth) {
     return result;
   }
@@ -302,9 +373,9 @@ async function scrapeHtmlMedia(url: string): Promise<ExtractedMedia | null> {
 }
 
 /**
- * Run yt-dlp extraction with optional generic extractor mode
+ * Run yt-dlp extraction with optional generic extractor mode and browser cookie support
  */
-function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<ExtractionResult> {
+function runYtDlpExtraction(url: string, useGeneric: boolean, browserCookies?: string): Promise<ExtractionResult> {
   const ytDlpPath = getYtDlpPath();
   if (!ytDlpPath) {
     console.warn('[Extractor] yt-dlp binary not found');
@@ -325,7 +396,10 @@ function runYtDlpExtraction(url: string, useGeneric: boolean): Promise<Extractio
     '--js-runtimes', 'node',
   ];
 
-  if (cookiesPath) {
+  if (browserCookies) {
+    console.log(`[Extractor] Using browser cookies from: ${browserCookies}`);
+    args.push('--cookies-from-browser', browserCookies);
+  } else if (cookiesPath) {
     console.log('[Extractor] Using cookies from:', cookiesPath);
     args.push('--cookies', cookiesPath);
   }
@@ -445,6 +519,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
 
   const ffmpegDir = getFfmpegDir();
   const cookiesPath = getCookiesPath();
+  const detectedBrowser = getAvailableBrowser();
 
   let safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '_').trim();
   if (!/\.(mp4|webm|mkv|mov|m4v|mp3|m4a)$/i.test(safeFilename)) {
@@ -460,7 +535,7 @@ export function streamMediaDownload(url: string, filename: string, res: Response
   const tempPrefix = `clipnest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tempOutputFile = path.join(os.tmpdir(), `${tempPrefix}_%(title).70B.%(ext)s`);
 
-  const buildArgs = (useGeneric: boolean) => {
+  const buildArgs = (useGeneric: boolean, useBrowserCookies?: string) => {
     const args = [
       '-o', tempOutputFile,
       '-f', formatSelection,
@@ -474,7 +549,9 @@ export function streamMediaDownload(url: string, filename: string, res: Response
       '--js-runtimes', 'node',
     ];
 
-    if (cookiesPath) {
+    if (useBrowserCookies) {
+      args.push('--cookies-from-browser', useBrowserCookies);
+    } else if (cookiesPath) {
       args.push('--cookies', cookiesPath);
     }
 
@@ -497,15 +574,15 @@ export function streamMediaDownload(url: string, filename: string, res: Response
     } catch {}
   };
 
-  const attemptDownload = (useGeneric: boolean) => {
-    const args = buildArgs(useGeneric);
+  const attemptDownload = (useGeneric: boolean, useBrowserCookies?: string) => {
+    const args = buildArgs(useGeneric, useBrowserCookies);
     const child = spawn(ytDlpPath, args, { windowsHide: true });
     let fullStderr = '';
 
     child.stderr.on('data', (data) => {
       const msg = data.toString();
       fullStderr += msg;
-      console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}]`, msg.trim());
+      console.error(`[Extractor Stream${useGeneric ? ' Generic' : ''}${useBrowserCookies ? ` Browser:${useBrowserCookies}` : ''}]`, msg.trim());
     });
 
     child.on('error', (err) => {
@@ -531,6 +608,14 @@ export function streamMediaDownload(url: string, filename: string, res: Response
         const isAuthRequired = /login|log in|authentication|empty media response|confirm you're not a bot|confirm your age|private video/i.test(
           fullStderr
         );
+
+        // If auth required and we haven't tried browser cookies yet, auto-retry
+        if (isAuthRequired && !useBrowserCookies && !cookiesPath && detectedBrowser && !res.headersSent) {
+          console.log(`[Extractor Stream] Auth required, auto-retrying with --cookies-from-browser ${detectedBrowser}`);
+          cleanupTempFiles();
+          attemptDownload(useGeneric, detectedBrowser);
+          return;
+        }
 
         if (isAuthRequired && !res.headersSent) {
           cleanupTempFiles();
